@@ -123,13 +123,19 @@ Masked Output: **** you idiot, నువ్వు ****
 
 toxic-comment-masking/
 ├── app.py
+
 ├── requirements.txt
+
 ├── README.md
+
 ├── train.csv
+
 ├──README.md
+
 └── model/
-├── toxic_model.pkl
-└── final_bad_words.pkl
+
+  ├── toxic_model.pkl
+  └── final_bad_words.pkl
 
 
 
@@ -202,6 +208,5 @@ This project successfully demonstrates how **Machine Learning and Natural Langua
 
 **Name:** Viraj  
 **Project Type:** Machine Learning & NLP  
-**Year:** 2025  
-
+**Year:** 2025
 ---
