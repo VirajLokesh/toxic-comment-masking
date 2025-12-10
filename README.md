@@ -135,6 +135,7 @@ toxic-comment-masking/
 └── model/
 
   ├── toxic_model.pkl
+  
   └── final_bad_words.pkl
 
 
