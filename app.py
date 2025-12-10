@@ -2,9 +2,15 @@ import streamlit as st
 import joblib
 import re
 
+# ----------------------------------
+# Load Saved ML Model & Offensive Words
+# ----------------------------------
 toxicity_model = joblib.load("model/toxic_model.pkl")
 final_offensive_word_list = joblib.load("model/final_bad_words.pkl")
 
+# ----------------------------------
+# Slang & Misspelling Normalization
+# ----------------------------------
 COMMON_MISSPELLING_MAP = {
     "idoit": "idiot",
     "stupit": "stupid",
@@ -14,6 +20,9 @@ COMMON_MISSPELLING_MAP = {
     "asshloe": "asshole"
 }
 
+# ----------------------------------
+# Text Preprocessing
+# ----------------------------------
 def preprocess_comment(comment_text):
     comment_text = comment_text.lower()
     comment_text = re.sub(r"http\S+|@\w+|#\w+", "", comment_text)
@@ -26,19 +35,27 @@ def normalize_slang_words(clean_text):
     corrected_words = [COMMON_MISSPELLING_MAP.get(word, word) for word in words]
     return " ".join(corrected_words)
 
+# ----------------------------------
+# Compile Regex Patterns for Masking
+# ----------------------------------
 compiled_masking_patterns = []
-
 for word in final_offensive_word_list:
     if isinstance(word, str) and len(word.strip()) > 2:
         pattern = re.compile(rf"\b{re.escape(word.strip())}\b", flags=re.IGNORECASE)
         compiled_masking_patterns.append(pattern)
 
+# ----------------------------------
+# Advanced Masking Function
+# ----------------------------------
 def advanced_toxic_word_masking(original_text):
     masked_text = original_text
     for pattern in compiled_masking_patterns:
         masked_text = pattern.sub(lambda match: "*" * len(match.group()), masked_text)
     return masked_text
 
+# ----------------------------------
+# Final Detection + Masking Pipeline
+# ----------------------------------
 def detect_and_mask_toxicity(input_text):
     cleaned_text = normalize_slang_words(preprocess_comment(input_text))
 
@@ -54,6 +71,9 @@ def detect_and_mask_toxicity(input_text):
 
     return final_label, round(prediction_probability * 100, 2), masked_output_text
 
+# ----------------------------------
+# Streamlit UI Design
+# ----------------------------------
 st.set_page_config(page_title="Toxic Comment Detector", page_icon="🛡️")
 
 st.title("🛡️ Toxic Comment Detection & Masking System")
