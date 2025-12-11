@@ -122,6 +122,7 @@ Masked Output: **** you *****, నువ్వు ****
 
 
 toxic-comment-masking/
+
 ├── app.py
 
 ├── requirements.txt
@@ -162,7 +163,7 @@ http://localhost:8501
 ## 🌐 Live Deployment (If Deployed on Streamlit Cloud)
 
 Once deployed, the project will be available at:
-[https://your-project-name.streamlit.app](https://toxic-comment-masking.streamlit.app/)
+[https://toxic-comment-masking.streamlit.app](https://toxic-comment-masking.streamlit.app/)
 
 
 This link can be shared with:
