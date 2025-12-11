@@ -186,8 +186,8 @@ with st.sidebar:
     st.subheader("📝 Examples (click to copy then press Analyze):")
     if st.button("Example 1: rafi you idiot"):
         st.session_state['sample'] = "rafi you idiot"
-    if st.button("Example 2: rafi బుద్ధిలేని వెధవ"):
-        st.session_state['sample'] = "rafi బుద్ధిలేని వెధవ"
+    if st.button("Example 2: rafi you బుద్ధిలేని వెధవ"):
+        st.session_state['sample'] = "rafi you బుద్ధిలేని వెధవ"
     if st.button("Example 3: fuck you asshole"):
         st.session_state['sample'] = "fuck you asshole"
 
