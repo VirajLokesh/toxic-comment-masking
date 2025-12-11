@@ -120,33 +120,32 @@ def detect_and_mask(text):
 
 # STREAMLIT UI (Professional Industry-Grade)
 
-st.set_page_config(page_title="Advanced Toxicity Detector", page_icon="🛡️", layout="wide")
+# ---------------------------
+# Sidebar Section (Examples + Project Purpose)
+# ---------------------------
+st.sidebar.title("📘 Project Guide")
+st.sidebar.write("This system detects toxic and offensive language in English & Telugu, highlights harmful words, and masks them for safe communication.")
 
-st.title("🛡️ Advanced Toxic Comment Detection & Masking System")
-st.write("Detects, highlights, and masks abusive language in **English & Telugu** using ML & NLP.")
+st.sidebar.subheader("💡 Why This Project?")
+st.sidebar.write("""
+Online platforms face increasing issues with:
+- Cyberbullying  
+- Abusive language  
+- Hate speech  
+- Harassment  
+This project was built to automatically detect and neutralize harmful messages using Machine Learning + NLP.
+""")
 
-# Comment input
-user_input = st.text_area("Enter your comment:", height=150)
+st.sidebar.subheader("📝 Example Inputs:")
+st.sidebar.code("rafi you idiot")
+st.sidebar.code("నీవు పిచ్చోడు")
+st.sidebar.code("fuck this shit")
 
-if st.button("Analyze Comment"):
-    if not user_input.strip():
-        st.warning("⚠️ Please enter a comment.")
-    else:
-        label, score, masked_output, highlighted_text, found_words = detect_and_mask(user_input)
+st.sidebar.subheader("✅ Expected Output:")
+st.sidebar.write("Offensive words will be **highlighted in red** and replaced with ** masked characters**.")
 
-        st.subheader("🔍 Analysis Result")
-        st.write("**Prediction:**", label)
-        st.write("**Confidence Score:**", score, "%")
+st.sidebar.info("Try entering your own comments!")
 
-        # Offensive words found
-        if found_words:
-            st.markdown("### 🚨 Detected Offensive Words:")
-            st.error(", ".join(found_words))
 
-            st.markdown("### 🟥 Highlighted Text:")
-            st.markdown(highlighted_text)
-        else:
-            st.info("No offensive words found.")
 
-        st.markdown("### 🛡️ Masked Output:")
-        st.success(masked_output)
+####################
