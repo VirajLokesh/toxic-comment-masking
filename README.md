@@ -112,7 +112,7 @@ fuck you idoit, నువ్వు వెధవ
 
 Prediction: Toxic ⚠️
 Confidence: 67.84 %
-Masked Output: **** you idiot, నువ్వు ****
+Masked Output: **** you *****, నువ్వు ****
 
 
 
@@ -162,7 +162,7 @@ http://localhost:8501
 ## 🌐 Live Deployment (If Deployed on Streamlit Cloud)
 
 Once deployed, the project will be available at:
-https://your-project-name.streamlit.app
+[https://your-project-name.streamlit.app](https://toxic-comment-masking.streamlit.app/)
 
 
 This link can be shared with:
