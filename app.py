@@ -50,7 +50,8 @@ for word in telugu_offensive_words:
     final_offensive_word_list.add(word.lower())
 
 # Remove safe/common words
-final_offensive_word_list = {w for w in final_offensive_word_list if w not in SAFE_WORDS
+final_offensive_word_list = {w for w in final_offensive_word_list if w not in SAFE_WORDS}
+
                              
 # TEXT PREPROCESSING + NORMALIZATION
                              
