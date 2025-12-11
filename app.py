@@ -1,16 +1,25 @@
 import streamlit as st
 import joblib
 import re
+from typing import List, Tuple
 
 # ---------------------------------------------------------
-# 1) LOAD TRAINED MODEL + BASE OFFENSIVE WORD LIST (PKL)
+# 0) Safe model loading (show clear message if missing)
 # ---------------------------------------------------------
-toxicity_model = joblib.load("model/toxic_model.pkl")
-base_bad_words = joblib.load("model/final_bad_words.pkl")  # extracted from dataset
+try:
+    toxicity_model = joblib.load("model/toxic_model.pkl")
+except Exception as e:
+    st.error("Failed to load model file 'model/toxic_model.pkl'. Make sure the file exists in the repo.")
+    st.stop()
+
+try:
+    base_bad_words = joblib.load("model/final_bad_words.pkl")
+except Exception:
+    # If the PKL isn't available we continue with an empty base set.
+    base_bad_words = []
 
 # ---------------------------------------------------------
-# 2) ADD ENGLISH + TELUGU OFFENSIVE WORD LISTS (Industry-grade)
-#    (You already provided these lists; they are extended here)
+# 1) Manual English + Telugu Offensive Word Lists
 # ---------------------------------------------------------
 english_offensive_words = [
     "fuck","fucking","fucker","fucked","mf","motherfucker","bitch","bitches",
@@ -35,37 +44,31 @@ telugu_offensive_words = [
 ]
 
 # ---------------------------------------------------------
-# 3) MERGE + FILTER (remove common SAFE words to avoid false positives)
+# 2) Merge + filter safe words (avoid matching 'you', 'me', etc.)
 # ---------------------------------------------------------
 SAFE_WORDS = {
     "you", "me", "we", "they", "he", "she", "it", "your", "our", "my", "her", "him", "them",
     "is", "are", "the", "a", "an", "and", "or", "if", "in", "on", "at"
 }
 
-# Build set from PKL and manual lists (lowercased)
 merged_set = set()
 
-# Add PKL words (if any)
+# add base PKL words
 for w in base_bad_words:
     if isinstance(w, str) and w.strip():
         merged_set.add(w.strip().lower())
 
-# Add manual English + Telugu lists
+# add manual lists
 for w in english_offensive_words + telugu_offensive_words:
     if isinstance(w, str) and w.strip():
         merged_set.add(w.strip().lower())
 
-# Remove safe/common words & very short tokens
-final_offensive_word_list = {
-    w for w in merged_set
-    if len(w) > 2 and w not in SAFE_WORDS
-}
-
-# Convert to sorted list for deterministic order (nice for debugging/UI)
+# remove safe/common words & very short tokens
+final_offensive_word_list = {w for w in merged_set if len(w) > 1 and w not in SAFE_WORDS}
 final_offensive_word_list = sorted(final_offensive_word_list)
 
 # ---------------------------------------------------------
-# 4) TEXT PREPROCESSING + NORMALIZATION
+# 3) Preprocessing + normalization
 # ---------------------------------------------------------
 COMMON_MISSPELLINGS = {
     "idoit": "idiot", "stupit": "stupid", "fuk": "fuck",
@@ -74,73 +77,73 @@ COMMON_MISSPELLINGS = {
 }
 
 def preprocess_comment(text: str) -> str:
-    """Lowercase, remove urls/handles/hashtags, remove punctuation (keep Telugu + English letters)."""
     text = text.lower()
     text = re.sub(r"http\S+|@\w+|#\w+", "", text)
-    # Keep Telugu Unicode block and English letters and spaces
+    # keep Telugu unicode block \u0C00-\u0C7F and English letters and spaces
     text = re.sub(r"[^\u0C00-\u0C7Fa-zA-Z\s]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
 def normalize_slang_words(text: str) -> str:
-    """Fix common misspellings/slang."""
     return " ".join([COMMON_MISSPELLINGS.get(tok, tok) for tok in text.split()])
 
 # ---------------------------------------------------------
-# 5) COMPILE REGEX PATTERNS (word-boundary safe)
-# Note: \b might behave differently for Telugu; we use lookarounds to be robust.
+# 4) Compile robust regex patterns (Unicode-aware boundaries)
+# Use character class that considers English letters/digits and Telugu block,
+# so lookbehind/lookahead match properly for multilingual text.
 # ---------------------------------------------------------
-mask_patterns = []
+WORD_CHAR_CLASS = r"A-Za-z0-9\u0C00-\u0C7F"  # english letters/digits + telugu block
+
+mask_patterns: List[Tuple[str, re.Pattern]] = []
 for word in final_offensive_word_list:
-    # Use Unicode-aware boundaries: (?<!\w) and (?!\w) — this avoids matching inside words
-    pattern = re.compile(rf"(?<!\w){re.escape(word)}(?!\w)", flags=re.IGNORECASE)
-    mask_patterns.append((word, pattern))  # keep the base word too
+    # build a regex with left/right boundaries not being word or telugu chars
+    # (?<![A-Za-z0-9\u0C00-\u0C7F])WORD(?![A-Za-z0-9\u0C00-\u0C7F])
+    escaped = re.escape(word)
+    pattern = re.compile(rf"(?<![{WORD_CHAR_CLASS}]){escaped}(?![{WORD_CHAR_CLASS}])", flags=re.IGNORECASE)
+    mask_patterns.append((word, pattern))
 
 # ---------------------------------------------------------
-# 6) MASKING + HIGHLIGHTING FUNCTIONS
+# 5) Masking + highlighting functions (preserve length with stars)
 # ---------------------------------------------------------
 def mask_offensive_words(original_text: str) -> str:
-    """Return masked version of original_text by replacing offensive tokens with asterisks."""
+    """Mask any offensive token occurrences in the original_text preserving length with '*'."""
     masked = original_text
+    # iterate patterns — replace using function to preserve matched length
     for _, pattern in mask_patterns:
-        # Replace using the match length to keep same number of '*' characters
         masked = pattern.sub(lambda m: "*" * len(m.group(0)), masked)
     return masked
 
-def highlight_offensive_words(original_text: str):
+def highlight_offensive_words(original_text: str) -> Tuple[str, List[str]]:
     """
-    Highlight offensive words (markdown) and return:
-      - highlighted_text: markdown friendly text with red highlights
-      - detected_words: list of unique matched words (as matched in the text)
+    Return highlighted markdown text and list of unique detected words in original casing.
+    We perform pattern.finditer on the current string and do safe left-to-right replacement.
     """
     highlighted = original_text
-    detected = []
-    # To avoid repeatedly replacing the same area and breaking indices, we perform replacements
-    # by iterating patterns — each substitution uses the matched text itself.
-    for base_word, pattern in mask_patterns:
-        # finditer gives Match objects preserving original casing
+    detected_matches = []
+
+    # To avoid nested replacements interfering with indexes, we run pattern-by-pattern,
+    # rebuilding string on each pattern using finditer spans.
+    for _, pattern in mask_patterns:
         matches = list(pattern.finditer(highlighted))
         if not matches:
             continue
-        # For replacements without interfering with previously added markdown, do a single pass:
-        # Build new string by splitting and replacing matches left-to-right.
+
         new_parts = []
-        last_idx = 0
+        last_index = 0
         for m in matches:
-            start, end = m.span()
-            # Append text before match
-            new_parts.append(highlighted[last_idx:start])
-            matched_text = highlighted[start:end]
-            # Add markdown red highlight preserving the original matched casing
+            s, e = m.span()
+            new_parts.append(highlighted[last_index:s])
+            matched_text = highlighted[s:e]
             new_parts.append(f"**:red[{matched_text}]**")
-            detected.append(matched_text)
-            last_idx = end
-        new_parts.append(highlighted[last_idx:])
+            detected_matches.append(matched_text)
+            last_index = e
+        new_parts.append(highlighted[last_index:])
         highlighted = "".join(new_parts)
-    # Remove duplicates but preserve order
+
+    # deduplicate while preserving order (case-insensitive key)
     seen = set()
     unique_detected = []
-    for w in detected:
+    for w in detected_matches:
         lw = w.lower()
         if lw not in seen:
             seen.add(lw)
@@ -148,17 +151,12 @@ def highlight_offensive_words(original_text: str):
     return highlighted, unique_detected
 
 # ---------------------------------------------------------
-# 7) PREDICTION + PROCESSING PIPELINE
+# 6) Detection pipeline
 # ---------------------------------------------------------
 def detect_and_mask_pipeline(text: str):
-    """
-    1) Clean & normalize for model
-    2) Predict toxicity with the trained model
-    3) Highlight and mask on ORIGINAL input
-    """
-    cleaned = normalize_slang_words(preprocess_comment(text))
-    prediction_label = toxicity_model.predict([cleaned])[0]
-    probability = round(float(toxicity_model.predict_proba([cleaned])[0][1]) * 100, 2)
+    cleaned_text = normalize_slang_words(preprocess_comment(text))
+    prediction_label = toxicity_model.predict([cleaned_text])[0]
+    probability = round(float(toxicity_model.predict_proba([cleaned_text])[0][1]) * 100, 2)
 
     highlighted_text, detected_words = highlight_offensive_words(text)
     masked_text = mask_offensive_words(text) if prediction_label == 1 else text
@@ -170,64 +168,85 @@ def detect_and_mask_pipeline(text: str):
         "probability": probability,
         "masked_text": masked_text,
         "highlighted_text": highlighted_text,
-        "detected_words": detected_words
+        "detected_words": detected_words,
+        "cleaned": cleaned_text
     }
 
 # ---------------------------------------------------------
-# 8) STREAMLIT UI (sidebar, examples, result layout)
+# 7) Streamlit UI
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Toxic Comment Detector", page_icon="🛡️", layout="wide")
 
-# Sidebar - Project guide and examples
+# Sidebar
 with st.sidebar:
     st.title("📘 Project Guide")
-    st.write(
-        "Detects toxic/offensive language (English + Telugu), highlights harmful words and masks them "
-        "for safe display. Built with ML (TF-IDF + classifier) and a masking dictionary."
-    )
+    st.write("Detects toxic/offensive language (English + Telugu), highlights harmful words and masks them for safe display.")
     st.subheader("💡 Why this project?")
-    st.write(
-        "- Reduce cyberbullying & harassment\n"
-        "- Auto-protect audiences from abusive language\n"
-        "- Demonstrate multilingual NLP (Telugu + English)"
-    )
-    st.subheader("📝 Examples (copy to main box):")
-    st.code("rafi you idiot")
-    st.code("rafi బుద్ధిలేని వెధవ")
-    st.code("fuck you asshole")
-    st.subheader("✅ What to expect")
-    st.write("Offensive words will be highlighted and the masked output will show asterisks.")
+    st.write("- Reduce cyberbullying\n- Auto-protect audiences\n- Demonstrate multilingual NLP (Telugu + English)")
+    st.subheader("📝 Examples (click to copy then press Analyze):")
+    if st.button("Example 1: rafi you idiot"):
+        st.session_state['sample'] = "rafi you idiot"
+    if st.button("Example 2: rafi బుద్ధిలేని వెధవ"):
+        st.session_state['sample'] = "rafi బుద్ధిలేని వెధవ"
+    if st.button("Example 3: fuck you asshole"):
+        st.session_state['sample'] = "fuck you asshole"
 
-# Main UI
+    st.subheader("⚙️ Settings")
+    threshold = st.slider("Toxicity threshold (%)", 10, 90, 50, 5)
+    st.write("You can change threshold to make detection stricter/looser.")
+    st.markdown("---")
+    st.write(f"Dictionary entries used: **{len(final_offensive_word_list)}**")
+
+# Main layout
 st.title("🛡️ Advanced Toxic Comment Detection & Masking System")
 st.write("Enter a comment (Telugu / English / mixed) to analyze:")
 
-input_comment = st.text_area("Enter your comment here:", height=140)
+# Use session_state sample autofill
+default_text = st.session_state.get('sample', "")
+input_comment = st.text_area("Enter your comment here:", value=default_text, height=150)
 
 if st.button("Analyze Comment"):
     if not input_comment.strip():
         st.warning("Please enter a comment to analyze.")
     else:
         result = detect_and_mask_pipeline(input_comment)
+        prob = result["probability"]
+        is_toxic_by_threshold = prob >= threshold
 
         st.markdown("## 🔍 Analysis Result")
-        st.write("**Prediction:**", result["label"])
-        st.write("**Confidence Score:**", f"{result['probability']}%")
+        display_label = result["label"]
+        # If model predicted toxic but user changed threshold, show adjusted label
+        if (result["label"] == "Toxic ⚠️") != is_toxic_by_threshold:
+            display_label = "Toxic ⚠️" if is_toxic_by_threshold else "Non-Toxic ✅"
+
+        st.write("**Prediction:**", display_label)
+        st.write("**Confidence Score:**", f"{prob}%")
+
+        # Show model input (cleaned) for transparency
+        st.markdown("### 🔎 Model Input (cleaned & normalized):")
+        st.code(result["cleaned"], language="text")
 
         if result["detected_words"]:
             st.markdown("### 🚨 Detected Offensive Words")
-            # show detected words as red tags (error box)
             st.error(", ".join(result["detected_words"]))
 
             st.markdown("### 🟥 Highlighted Text")
-            # highlighted_text contains markdown red highlights
             st.markdown(result["highlighted_text"])
         else:
-            st.info("No offensive words found in the text (by dictionary match).")
+            st.info("No offensive words found by dictionary matching.")
 
         st.markdown("### 🛡️ Masked Output")
-        st.success(result["masked_text"])
+        # show masked result in code block for fixed width
+        final_masked = result["masked_text"] if is_toxic_by_threshold else input_comment
+        st.code(final_masked, language="text")
 
-        # Optionally show the final_offensive_word_list count for demonstration
-        st.markdown("---")
-        st.write(f"Total dictionary entries used for masking: **{len(final_offensive_word_list)}**")
+        # Downloadable report
+        report = (
+            f"Original: {input_comment}\n"
+            f"Cleaned: {result['cleaned']}\n"
+            f"Prediction: {display_label}\n"
+            f"Confidence: {prob}%\n"
+            f"Detected: {', '.join(result['detected_words'])}\n"
+            f"Masked: {final_masked}\n"
+        )
+        st.download_button("Download report (txt)", report, file_name="toxicity_report.txt")
