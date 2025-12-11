@@ -244,7 +244,7 @@ with st.sidebar:
         st.session_state['sample'] = "నువ్వు వెధవ పిచ్చోడు"
     if st.button("Example: fuck you asshole"):
         st.session_state['sample'] = "fuck you asshole"
-    if st.button("Example: lokesh you are  good humorous person):
+    if st.button("Example: lokesh you are  good humorous person"):
         st.session_state['sample'] = "lokesh you are  good humorous person"
 
     st.subheader("Settings")
